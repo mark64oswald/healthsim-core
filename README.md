@@ -3,8 +3,8 @@
 Shared foundation library for the HealthSim product family. This library provides generic infrastructure for building simulation and synthetic data generation products.
 
 > **Note**: This is an infrastructure library. For end-user products, see:
-> - [PatientSim](https://github.com/mark64oswald/PatientSim) — Healthcare patient simulation
-> - MemberSim (coming soon) — Health plan member simulation
+> - [PatientSim](../patientsim) — Healthcare patient simulation
+> - [MemberSim](../membersim) — Health plan member simulation
 > - RxMemberSim (coming soon) — Pharmacy member simulation
 
 ## What's Included
@@ -90,42 +90,53 @@ To build a new product using this library:
    dependencies = ["healthsim-core>=0.1.0"]
    ```
 
-2. **Extend the Person model**:
-   ```python
-   from healthsim.person import Person
-
-   class Patient(Person):
-       """Patient extends Person with healthcare-specific fields."""
-       mrn: str  # Medical Record Number
-       # ... clinical fields
-   ```
-
-3. **Extend the Generator**:
+2. **Extend the BaseGenerator**:
    ```python
    from healthsim.generation import BaseGenerator
+   from pydantic import BaseModel, Field
 
-   class PatientGenerator(BaseGenerator):
-       """Generate patients with clinical data."""
+   class Member(BaseModel):
+       """Health plan member."""
+       member_id: str
+       given_name: str
+       family_name: str
 
-       def generate_patient(self, **kwargs) -> Patient:
-           # Use base generator utilities
-           person = self._generate_person(**kwargs)
-           mrn = self._generate_identifier("MRN")
-           return Patient(**person.model_dump(), mrn=mrn)
+   class MemberGenerator(BaseGenerator):
+       """Generate health plan members."""
+
+       def generate_member(self) -> Member:
+           return Member(
+               member_id=f"M{self.random_int(100000, 999999)}",
+               given_name=self.faker.first_name(),
+               family_name=self.faker.last_name(),
+           )
    ```
+
+3. **Benefit from inherited features**:
+   - **Reproducibility**: Same seed always produces same results
+   - **Reset**: `generator.reset()` returns to initial state
+   - **Utilities**: `random_int()`, `random_choice()`, `random_bool()`, `weighted_choice()`
+   - **Faker integration**: Access to `self.faker` for realistic data
 
 4. **Use the validation framework**:
    ```python
-   from healthsim.validation import BaseValidator, ValidationResult
+   from healthsim.validation import BaseValidator, ValidationResult, ValidationSeverity
 
-   class ClinicalValidator(BaseValidator):
-       """Domain-specific validation rules."""
+   class MemberValidator(BaseValidator):
+       """Validate member data."""
 
-       def validate(self, data) -> ValidationResult:
+       def validate(self, member: Member) -> ValidationResult:
            result = ValidationResult()
-           # Add domain-specific checks
+           if not member.member_id.startswith("M"):
+               result.add_issue(
+                   code="MEM_001",
+                   message="Member ID must start with M",
+                   severity=ValidationSeverity.ERROR
+               )
            return result
    ```
+
+See [MemberSim](../membersim) for a complete example of a product built on healthsim-core.
 
 ## API Reference
 
