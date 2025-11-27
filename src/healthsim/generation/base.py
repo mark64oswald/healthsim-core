@@ -62,6 +62,8 @@ class BaseGenerator:
     def reset(self) -> None:
         """Reset the generator to initial seed state."""
         self.seed_manager.reset()
+        # Update faker reference since seed_manager.reset() creates a new instance
+        self.faker = self.seed_manager.faker
 
     def generate_id(self, prefix: str = "") -> str:
         """Generate a unique identifier.
