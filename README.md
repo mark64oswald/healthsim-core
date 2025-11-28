@@ -87,7 +87,7 @@ To build a new product using this library:
 1. **Install as dependency**:
    ```toml
    # pyproject.toml
-   dependencies = ["healthsim-core>=0.1.0"]
+   dependencies = ["healthsim-core>=0.2.0"]
    ```
 
 2. **Extend the BaseGenerator**:
@@ -151,17 +151,29 @@ See [MemberSim](../membersim) for a complete example of a product built on healt
 ### healthsim.temporal
 
 - `TimePeriod` — Start/end datetime with duration
-- `TimelineEvent` — Single event with timestamp
-- `Timeline` — Ordered sequence of events
+- `Period` — Date range with gap/overlap detection
+- `PeriodCollection` — Collection of periods with consolidation
+- `TimelineEvent` — Event with status, delay, and dependencies
+- `Timeline` — Ordered sequence of events with scheduling
+- `EventStatus` — PENDING, EXECUTED, SKIPPED, FAILED
+- `EventDelay` — Configurable delay between events
 - `calculate_age()` — Age from birth date
-- `format_datetime_iso()` — ISO 8601 formatting
+- `relative_date()` — Calculate date offsets
+- `business_days_between()` — Count business days
+- `next_business_day()` — Find next Mon-Fri
+- `is_future_date()` — Check if date is in future
 
 ### healthsim.generation
 
 - `BaseGenerator` — Abstract base with seed management
 - `PersonGenerator` — Generate Person instances
-- `weighted_choice()` — Select from weighted options
-- `random_date_in_range()` — Random date generation
+- `CohortGenerator` — Generate groups of entities
+- `CohortConstraints` — Configure cohort generation
+- `CohortProgress` — Track generation progress
+- `AgeDistribution` — Weighted age band sampling
+- `WeightedChoice` — Select from weighted options
+- `NormalDistribution` — Normal distribution sampling
+- `UniformDistribution` — Uniform distribution sampling
 
 ### healthsim.validation
 
@@ -169,13 +181,22 @@ See [MemberSim](../membersim) for a complete example of a product built on healt
 - `ValidationIssue` — Single validation issue
 - `ValidationResult` — Collection of issues
 - `BaseValidator` — Abstract validator base class
+- `CompositeValidator` — Combine multiple validators
+- `StructuralValidator` — Required field validation
 - `TemporalValidator` — Date/time validation
 
 ### healthsim.formats
 
-- `BaseTransformer` — Abstract format transformer
+- `Transformer` — Generic abstract transformer
+- `JsonTransformer` — JSON output base class
+- `CsvTransformer` — CSV output base class
+- `BaseTransformer` — Legacy transformer base
 - `JSONExporter` — Export to JSON
 - `CSVExporter` — Export to CSV
+- `format_date()` — Format date to string
+- `format_datetime()` — Format datetime to string
+- `safe_str()` — Safe string conversion
+- `truncate()` — Truncate text with suffix
 
 ### healthsim.skills
 

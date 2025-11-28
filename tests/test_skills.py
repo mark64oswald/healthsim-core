@@ -13,7 +13,6 @@ from healthsim.skills import (
     SkillLoader,
     SkillMetadata,
     SkillParameter,
-    SkillParseError,
     SkillType,
     SkillVariation,
 )

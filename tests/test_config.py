@@ -3,8 +3,6 @@
 import io
 import logging
 
-import pytest
-
 from healthsim.config import HealthSimSettings, setup_logging
 
 

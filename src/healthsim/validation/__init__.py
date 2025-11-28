@@ -1,7 +1,7 @@
-"""Validation framework for HealthSim applications.
+"""Validation framework for synthetic data.
 
-This module provides a generic validation framework that can be extended
-by products to implement domain-specific validation rules.
+Provides base classes and utilities for validating
+generated data across all HealthSim products.
 
 Example:
     >>> from healthsim.validation import ValidationResult, ValidationSeverity
@@ -18,18 +18,26 @@ Example:
 
 from healthsim.validation.framework import (
     BaseValidator,
+    CompositeValidator,
+    StructuralValidator,
     ValidationIssue,
+    ValidationMessage,
     ValidationResult,
     ValidationSeverity,
+    Validator,
 )
 from healthsim.validation.temporal import TemporalValidator
 
 __all__ = [
-    # Core classes
-    "ValidationSeverity",
-    "ValidationIssue",
+    # Results
     "ValidationResult",
-    "BaseValidator",
+    "ValidationIssue",
+    "ValidationMessage",
+    "ValidationSeverity",
     # Validators
+    "BaseValidator",
+    "Validator",
+    "CompositeValidator",
     "TemporalValidator",
+    "StructuralValidator",
 ]

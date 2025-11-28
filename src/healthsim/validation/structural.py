@@ -3,7 +3,8 @@
 Provides validators for data structure and referential integrity checks.
 """
 
-from typing import Any, Callable, Protocol, TypeVar
+from collections.abc import Callable
+from typing import Any, Protocol, TypeVar
 
 from healthsim.validation.framework import (
     BaseValidator,
