@@ -1,15 +1,23 @@
-# HealthSim Core
+# healthsim-core
 
-Shared foundation library for the HealthSim product family. This library provides generic infrastructure for building simulation and synthetic data generation products.
+**Shared foundation library for the HealthSim synthetic healthcare data platform.**
 
-> **Note**: This is an infrastructure library. For end-user products, see:
-> - [PatientSim](../patientsim) — Healthcare patient simulation
-> - [MemberSim](../membersim) — Health plan member simulation
-> - RxMemberSim (coming soon) — Pharmacy member simulation
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CHANGELOG.md)
+
+---
+
+## Overview
+
+healthsim-core provides **domain-agnostic infrastructure** for synthetic healthcare data generation. It serves as the foundation for:
+
+- **[PatientSim](https://github.com/mark64oswald/PatientSim)** — Clinical/EMR synthetic data
+- **[MemberSim](https://github.com/mark64oswald/MemberSim)** — Payer/claims synthetic data
+
+This library contains **no clinical or payer-specific concepts** — only generic patterns that both products extend.
 
 ## What's Included
-
-HealthSim Core provides domain-agnostic building blocks:
 
 | Module | Description |
 |--------|-------------|
@@ -30,113 +38,244 @@ pip install healthsim-core
 For development:
 
 ```bash
-pip install healthsim-core[dev]
+git clone https://github.com/mark64oswald/healthsim-core.git
+cd healthsim-core
+pip install -e ".[dev]"
 ```
 
-## Quick Start
+## Modules
 
-### Generate a Person
+### `healthsim.person`
+
+Core person demographics model.
 
 ```python
-from healthsim.generation import PersonGenerator
+from datetime import date
+from healthsim.person import Person, PersonName, Address, Gender, ContactInfo
 
-generator = PersonGenerator(seed=42)
-person = generator.generate_person(age_range=(25, 65))
+person = Person(
+    id="person-001",
+    name=PersonName(given_name="Jane", family_name="Smith"),
+    birth_date=date(1985, 6, 15),
+    gender=Gender.FEMALE,
+    address=Address(
+        street="123 Main St",
+        city="Boston",
+        state="MA",
+        zip_code="02101"
+    ),
+    contact=ContactInfo(
+        phone="617-555-1234",
+        email="jane.smith@example.com"
+    )
+)
 
 print(f"{person.name.full_name}, Age {person.age}")
-# Output: John Smith, Age 42
 ```
 
-### Validate Data
+### `healthsim.temporal`
+
+Timeline and date management.
 
 ```python
-from healthsim.validation import ValidationResult, ValidationSeverity
+from datetime import date
+from healthsim.temporal import (
+    Timeline, Period, PeriodCollection,
+    EventStatus, EventDelay,
+    calculate_age, relative_date, business_days_between
+)
 
-result = ValidationResult()
-if some_date > today:
-    result.add_issue(
-        code="DATE_001",
-        message="Date cannot be in the future",
-        severity=ValidationSeverity.ERROR,
-        field_path="birth_date"
-    )
+# Create a timeline with events
+timeline = Timeline(name="Treatment Plan", start_date=date(2024, 1, 1))
+timeline.create_event("intake", name="Initial Intake")
+timeline.create_event(
+    "assessment",
+    name="Assessment",
+    delay=EventDelay(min_days=7, max_days=14)
+)
+timeline.schedule_events()
 
-if result.valid:
-    print("Data is valid!")
-else:
+# Get pending events
+pending = timeline.get_pending_events()
+
+# Period management
+coverage = Period(start_date=date(2024, 1, 1), end_date=date(2024, 12, 31))
+print(f"Coverage duration: {coverage.duration_days} days")
+
+# Date utilities
+age = calculate_age(date(1985, 6, 15))
+next_week = relative_date(date.today(), days=7)
+workdays = business_days_between(date(2024, 1, 1), date(2024, 1, 31))
+```
+
+### `healthsim.generation`
+
+Reproducible data generation with distributions and cohorts.
+
+```python
+from healthsim.generation import (
+    SeedManager, WeightedChoice,
+    CohortGenerator, CohortConstraints, CohortProgress,
+    AgeDistribution, NormalDistribution, UniformDistribution
+)
+
+# Reproducible random with SeedManager
+seed_manager = SeedManager(seed=42)
+child_seed = seed_manager.get_child_seed()
+random_val = seed_manager.get_random_int(1, 100)
+
+# Weighted selection
+gender = WeightedChoice(options=[("M", 0.48), ("F", 0.52)])
+selected = gender.select(rng=seed_manager.rng)
+
+# Age distribution with presets
+ages = AgeDistribution.adult()  # 18-65 distribution
+sampled_age = ages.sample(rng=seed_manager.rng)
+
+# Normal and uniform distributions
+height = NormalDistribution(mean=170, std_dev=10)
+weight = UniformDistribution(min_value=60, max_value=100)
+```
+
+### `healthsim.validation`
+
+Validation framework for generated data.
+
+```python
+from healthsim.validation import (
+    BaseValidator, ValidationResult, ValidationSeverity,
+    CompositeValidator, StructuralValidator
+)
+
+# Create a custom validator
+class MyValidator(BaseValidator):
+    def validate(self, data) -> ValidationResult:
+        result = ValidationResult()
+        if not data.get("required_field"):
+            result.add_issue(
+                code="MISSING_001",
+                message="Required field is missing",
+                severity=ValidationSeverity.ERROR,
+                field_path="required_field"
+            )
+        return result
+
+# Combine validators
+validator = CompositeValidator()
+validator.add(MyValidator())
+validator.add(StructuralValidator(required_fields=["id", "name"]))
+
+result = validator.validate(entity)
+if not result.valid:
     for error in result.errors:
-        print(f"Error: {error.message}")
+        print(f"[{error.code}] {error.message}")
 ```
 
-### Load Skills
+### `healthsim.formats`
+
+Base transformer classes for output formats.
 
 ```python
-from healthsim.skills import SkillLoader
+from healthsim.formats import (
+    Transformer, JsonTransformer, CsvTransformer,
+    format_date, format_datetime, safe_str, truncate
+)
 
-loader = SkillLoader()
+class MyJsonTransformer(JsonTransformer):
+    def transform(self, entity):
+        return {
+            "id": entity.id,
+            "name": safe_str(entity.name),
+            "created": format_date(entity.created_at),
+            "description": truncate(entity.description, max_length=100)
+        }
+
+# Use the transformer
+transformer = MyJsonTransformer()
+json_output = transformer.transform(my_entity)
+```
+
+### `healthsim.skills`
+
+Skill file loading for Claude integration.
+
+```python
+from healthsim.skills import SkillLoader, SkillComposer
+
+# Load skills from directory
+loader = SkillLoader("./skills")
+skills = loader.load_all()
+
+# Load single skill
 skill = loader.load_file("skills/my-skill.md")
-
 print(f"Skill: {skill.name}")
 print(f"Parameters: {[p.name for p in skill.parameters]}")
+
+# Compose for Claude
+composer = SkillComposer(skills)
+context = composer.compose_with_headers()
 ```
 
 ## Building Products on HealthSim Core
 
-To build a new product using this library:
+When building a new product using this library:
 
-1. **Install as dependency**:
-   ```toml
-   # pyproject.toml
-   dependencies = ["healthsim-core>=0.2.0"]
-   ```
+### 1. Extend Person for your entity model
 
-2. **Extend the BaseGenerator**:
-   ```python
-   from healthsim.generation import BaseGenerator
-   from pydantic import BaseModel, Field
+```python
+from healthsim.person import Person
+from pydantic import Field
 
-   class Member(BaseModel):
-       """Health plan member."""
-       member_id: str
-       given_name: str
-       family_name: str
+class Patient(Person):
+    """Clinical patient model."""
+    mrn: str = Field(..., description="Medical Record Number")
+    diagnoses: list[str] = Field(default_factory=list)
 
-   class MemberGenerator(BaseGenerator):
-       """Generate health plan members."""
+class Member(Person):
+    """Health plan member model."""
+    member_id: str = Field(..., description="Member ID")
+    plan_code: str = Field(..., description="Plan identifier")
+```
 
-       def generate_member(self) -> Member:
-           return Member(
-               member_id=f"M{self.random_int(100000, 999999)}",
-               given_name=self.faker.first_name(),
-               family_name=self.faker.last_name(),
-           )
-   ```
+### 2. Extend CohortGenerator for batch generation
 
-3. **Benefit from inherited features**:
-   - **Reproducibility**: Same seed always produces same results
-   - **Reset**: `generator.reset()` returns to initial state
-   - **Utilities**: `random_int()`, `random_choice()`, `random_bool()`, `weighted_choice()`
-   - **Faker integration**: Access to `self.faker` for realistic data
+```python
+from healthsim.generation import CohortGenerator, CohortConstraints
 
-4. **Use the validation framework**:
-   ```python
-   from healthsim.validation import BaseValidator, ValidationResult, ValidationSeverity
+class MemberCohortGenerator(CohortGenerator["Member"]):
+    def generate_one(self, index: int, constraints: CohortConstraints) -> Member:
+        # Use self.seed_manager for reproducibility
+        member_seed = self.seed_manager.get_child_seed()
+        # Generate member...
+        return member
+```
 
-   class MemberValidator(BaseValidator):
-       """Validate member data."""
+### 3. Extend BaseValidator for domain validation
 
-       def validate(self, member: Member) -> ValidationResult:
-           result = ValidationResult()
-           if not member.member_id.startswith("M"):
-               result.add_issue(
-                   code="MEM_001",
-                   message="Member ID must start with M",
-                   severity=ValidationSeverity.ERROR
-               )
-           return result
-   ```
+```python
+from healthsim.validation import BaseValidator, ValidationResult
 
-See [MemberSim](../membersim) for a complete example of a product built on healthsim-core.
+class MemberValidator(BaseValidator):
+    def validate(self, member) -> ValidationResult:
+        result = ValidationResult()
+        # Add validation logic...
+        return result
+```
+
+### 4. Use Timeline for event sequencing
+
+```python
+from healthsim.temporal import Timeline, EventDelay
+
+timeline = Timeline(name="Enrollment", start_date=start_date)
+timeline.create_event("enroll", name="New Enrollment")
+timeline.create_event(
+    "id_card",
+    name="ID Card Mailed",
+    delay=EventDelay(min_days=3, max_days=5)
+)
+timeline.schedule_events()
+```
 
 ## API Reference
 
@@ -146,6 +285,7 @@ See [MemberSim](../membersim) for a complete example of a product built on healt
 - `PersonName` — Name components with `full_name` property
 - `Address` — Physical address
 - `ContactInfo` — Phone, email
+- `Identifier` — Generic identifier with type
 - `Person` — Base person model with demographics
 
 ### healthsim.temporal
@@ -165,12 +305,13 @@ See [MemberSim](../membersim) for a complete example of a product built on healt
 
 ### healthsim.generation
 
+- `SeedManager` — Seed management with child seeds and RNG
 - `BaseGenerator` — Abstract base with seed management
 - `PersonGenerator` — Generate Person instances
-- `CohortGenerator` — Generate groups of entities
+- `CohortGenerator` — Generate groups of entities (generic)
 - `CohortConstraints` — Configure cohort generation
 - `CohortProgress` — Track generation progress
-- `AgeDistribution` — Weighted age band sampling
+- `AgeDistribution` — Weighted age band sampling with presets
 - `WeightedChoice` — Select from weighted options
 - `NormalDistribution` — Normal distribution sampling
 - `UniformDistribution` — Uniform distribution sampling
@@ -179,7 +320,7 @@ See [MemberSim](../membersim) for a complete example of a product built on healt
 
 - `ValidationSeverity` — ERROR, WARNING, INFO
 - `ValidationIssue` — Single validation issue
-- `ValidationResult` — Collection of issues
+- `ValidationResult` — Collection of issues with `valid` property
 - `BaseValidator` — Abstract validator base class
 - `CompositeValidator` — Combine multiple validators
 - `StructuralValidator` — Required field validation
@@ -228,13 +369,17 @@ pip install -e ".[dev]"
 # Run tests
 pytest tests/ -v
 
-# Type checking
+# Code quality
+black src/ tests/
+ruff check src/ tests/ --fix
 mypy src/
-
-# Linting
-ruff check src/ tests/
 ```
 
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
+
+## Related Projects
+
+- **[PatientSim](https://github.com/mark64oswald/PatientSim)** — Clinical/EMR synthetic data generation
+- **[MemberSim](https://github.com/mark64oswald/MemberSim)** — Payer/claims synthetic data generation
