@@ -216,3 +216,90 @@ def days_between(d1: date, d2: date) -> int:
         14
     """
     return (d2 - d1).days
+
+
+def relative_date(
+    base: date,
+    years: int = 0,
+    months: int = 0,
+    days: int = 0,
+    direction: str = "after"
+) -> date:
+    """Calculate a date relative to a base date.
+
+    Args:
+        base: The reference date
+        years: Number of years to add/subtract
+        months: Number of months to add/subtract
+        days: Number of days to add/subtract
+        direction: "after" adds, "before" subtracts
+
+    Returns:
+        The calculated date
+    """
+    multiplier = 1 if direction == "after" else -1
+
+    # Handle days simply
+    result = base + timedelta(days=days * multiplier)
+
+    # Handle months (approximate as 30 days)
+    result += timedelta(days=months * 30 * multiplier)
+
+    # Handle years
+    try:
+        result = result.replace(year=result.year + (years * multiplier))
+    except ValueError:
+        # Handle Feb 29 edge case
+        result = result.replace(month=2, day=28, year=result.year + (years * multiplier))
+
+    return result
+
+
+def business_days_between(start: date, end: date) -> int:
+    """Count business days (Mon-Fri) between two dates.
+
+    Args:
+        start: Start date (inclusive)
+        end: End date (inclusive)
+
+    Returns:
+        Number of business days
+    """
+    if end < start:
+        return 0
+    count = 0
+    current = start
+    while current <= end:
+        if current.weekday() < 5:  # Monday = 0, Friday = 4
+            count += 1
+        current += timedelta(days=1)
+    return count
+
+
+def next_business_day(from_date: date) -> date:
+    """Get the next business day (Mon-Fri) from a date.
+
+    Args:
+        from_date: Starting date
+
+    Returns:
+        Next business day after from_date
+    """
+    current = from_date + timedelta(days=1)
+    while current.weekday() >= 5:  # Skip weekends
+        current += timedelta(days=1)
+    return current
+
+
+def is_future_date(check_date: date, reference: date | None = None) -> bool:
+    """Check if a date is in the future relative to reference (default: today).
+
+    Args:
+        check_date: Date to check
+        reference: Reference date (defaults to today)
+
+    Returns:
+        True if check_date is after reference
+    """
+    ref = reference or date.today()
+    return check_date > ref

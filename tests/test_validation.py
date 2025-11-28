@@ -2,14 +2,16 @@
 
 from datetime import date, datetime, timedelta
 
-import pytest
-
 from healthsim.validation import (
     BaseValidator,
+    CompositeValidator,
+    StructuralValidator,
     TemporalValidator,
     ValidationIssue,
+    ValidationMessage,
     ValidationResult,
     ValidationSeverity,
+    Validator,
 )
 
 
@@ -341,3 +343,200 @@ class TestTemporalValidator:
 
         assert len(result.warnings) == 1
         assert result.warnings[0].code == "TEMP_007"
+
+
+class TestAliases:
+    """Tests for compatibility aliases."""
+
+    def test_validator_alias(self) -> None:
+        """Test Validator is alias for BaseValidator."""
+        assert Validator is BaseValidator
+
+    def test_validation_message_alias(self) -> None:
+        """Test ValidationMessage is alias for ValidationIssue."""
+        assert ValidationMessage is ValidationIssue
+
+        # Should be usable interchangeably
+        msg = ValidationMessage(
+            code="TEST",
+            message="Test",
+            severity=ValidationSeverity.INFO,
+        )
+        assert isinstance(msg, ValidationIssue)
+
+
+class TestCompositeValidator:
+    """Tests for CompositeValidator."""
+
+    def test_creation_empty(self) -> None:
+        """Test creating empty composite validator."""
+        validator = CompositeValidator()
+        assert len(validator.validators) == 0
+
+    def test_creation_with_validators(self) -> None:
+        """Test creating with initial validators."""
+
+        class DummyValidator(BaseValidator):
+            def validate(self) -> ValidationResult:
+                return ValidationResult()
+
+        validators = [DummyValidator(), DummyValidator()]
+        composite = CompositeValidator(validators=validators)
+
+        assert len(composite.validators) == 2
+
+    def test_add(self) -> None:
+        """Test adding validators."""
+
+        class DummyValidator(BaseValidator):
+            def validate(self) -> ValidationResult:
+                return ValidationResult()
+
+        composite = CompositeValidator()
+        composite.add(DummyValidator())
+
+        assert len(composite.validators) == 1
+
+    def test_validate_merges_results(self) -> None:
+        """Test that validate merges all validator results."""
+
+        class ErrorValidator(BaseValidator):
+            def validate(self) -> ValidationResult:
+                result = ValidationResult()
+                result.add_issue("ERR_1", "Error", ValidationSeverity.ERROR)
+                return result
+
+        class WarningValidator(BaseValidator):
+            def validate(self) -> ValidationResult:
+                result = ValidationResult()
+                result.add_issue("WARN_1", "Warning", ValidationSeverity.WARNING)
+                return result
+
+        composite = CompositeValidator([ErrorValidator(), WarningValidator()])
+        result = composite.validate()
+
+        assert len(result.issues) == 2
+        assert len(result.errors) == 1
+        assert len(result.warnings) == 1
+        assert result.valid is False
+
+    def test_validate_all_valid(self) -> None:
+        """Test composite with all valid validators."""
+
+        class ValidValidator(BaseValidator):
+            def validate(self) -> ValidationResult:
+                return ValidationResult()
+
+        composite = CompositeValidator([ValidValidator(), ValidValidator()])
+        result = composite.validate()
+
+        assert result.valid is True
+        assert len(result.issues) == 0
+
+    def test_callable(self) -> None:
+        """Test that composite can be called directly."""
+
+        class ValidValidator(BaseValidator):
+            def validate(self) -> ValidationResult:
+                return ValidationResult()
+
+        composite = CompositeValidator([ValidValidator()])
+        result = composite()  # Call directly
+
+        assert result.valid is True
+
+
+class TestStructuralValidator:
+    """Tests for StructuralValidator."""
+
+    def test_creation(self) -> None:
+        """Test creating structural validator."""
+        validator = StructuralValidator(required_fields=["name", "id"])
+        assert validator.required_fields == ["name", "id"]
+
+    def test_creation_empty(self) -> None:
+        """Test creating without required fields."""
+        validator = StructuralValidator()
+        assert validator.required_fields == []
+
+    def test_validate_all_present(self) -> None:
+        """Test validation with all fields present."""
+
+        class Entity:
+            def __init__(self) -> None:
+                self.name = "Test"
+                self.id = "123"
+
+        validator = StructuralValidator(required_fields=["name", "id"])
+        result = validator.validate(Entity())
+
+        assert result.valid is True
+
+    def test_validate_missing_field(self) -> None:
+        """Test validation with missing field."""
+
+        class Entity:
+            def __init__(self) -> None:
+                self.name = "Test"
+
+        validator = StructuralValidator(required_fields=["name", "id"])
+        result = validator.validate(Entity())
+
+        assert result.valid is False
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "STRUCT_001"
+        assert result.errors[0].field_path == "id"
+
+    def test_validate_empty_field(self) -> None:
+        """Test validation with empty field."""
+
+        class Entity:
+            def __init__(self) -> None:
+                self.name = "Test"
+                self.id = ""
+
+        validator = StructuralValidator(required_fields=["name", "id"])
+        result = validator.validate(Entity())
+
+        assert result.valid is False
+        assert len(result.errors) == 1
+        assert result.errors[0].code == "STRUCT_002"
+
+    def test_validate_none_field(self) -> None:
+        """Test validation with None field."""
+
+        class Entity:
+            def __init__(self) -> None:
+                self.name = "Test"
+                self.id = None
+
+        validator = StructuralValidator(required_fields=["name", "id"])
+        result = validator.validate(Entity())
+
+        assert result.valid is False
+        assert result.errors[0].code == "STRUCT_002"
+
+    def test_validate_multiple_issues(self) -> None:
+        """Test validation with multiple issues."""
+
+        class Entity:
+            def __init__(self) -> None:
+                self.name = ""
+
+        validator = StructuralValidator(required_fields=["name", "id", "type"])
+        result = validator.validate(Entity())
+
+        # name is empty, id is missing, type is missing
+        assert result.valid is False
+        assert len(result.errors) == 3
+
+    def test_validate_empty_required_fields(self) -> None:
+        """Test with no required fields."""
+
+        class Entity:
+            pass
+
+        validator = StructuralValidator()
+        result = validator.validate(Entity())
+
+        assert result.valid is True

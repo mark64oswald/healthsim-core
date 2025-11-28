@@ -129,7 +129,10 @@ class ValidationResult:
     def __str__(self) -> str:
         """Return string representation of the result."""
         status = "VALID" if self.valid else "INVALID"
-        counts = f"({len(self.errors)} errors, {len(self.warnings)} warnings, {len(self.infos)} info)"
+        err_count = len(self.errors)
+        warn_count = len(self.warnings)
+        info_count = len(self.infos)
+        counts = f"({err_count} errors, {warn_count} warnings, {info_count} info)"
         return f"ValidationResult: {status} {counts}"
 
 
@@ -160,3 +163,80 @@ class BaseValidator(ABC):
             ValidationResult containing all issues found
         """
         ...
+
+    def __call__(self, *args: Any, **kwargs: Any) -> ValidationResult:
+        """Allow validators to be called directly."""
+        return self.validate(*args, **kwargs)
+
+
+# Aliases for compatibility
+Validator = BaseValidator
+ValidationMessage = ValidationIssue
+
+
+class CompositeValidator(BaseValidator):
+    """Validator that combines multiple validators.
+
+    Runs all validators and merges their results.
+    """
+
+    def __init__(self, validators: list[BaseValidator] | None = None):
+        """Initialize with optional list of validators.
+
+        Args:
+            validators: List of validators to combine
+        """
+        self.validators = validators or []
+
+    def add(self, validator: BaseValidator) -> None:
+        """Add a validator to the composite."""
+        self.validators.append(validator)
+
+    def validate(self, *args: Any, **kwargs: Any) -> ValidationResult:
+        """Run all validators and merge results."""
+        result = ValidationResult()
+        for validator in self.validators:
+            result.merge(validator.validate(*args, **kwargs))
+        return result
+
+
+class StructuralValidator(BaseValidator):
+    """Validator for structural/schema requirements.
+
+    Checks:
+    - Required fields are present
+    - Field formats are valid
+    - References exist
+    """
+
+    def __init__(self, required_fields: list[str] | None = None):
+        """Initialize with required field names.
+
+        Args:
+            required_fields: List of required field names
+        """
+        self.required_fields = required_fields or []
+
+    def validate(self, entity: Any) -> ValidationResult:
+        """Validate structural requirements."""
+        result = ValidationResult()
+
+        for field_name in self.required_fields:
+            if not hasattr(entity, field_name):
+                result.add_issue(
+                    code="STRUCT_001",
+                    message="Required field is missing",
+                    severity=ValidationSeverity.ERROR,
+                    field_path=field_name,
+                )
+            else:
+                value = getattr(entity, field_name)
+                if value is None or value == "":
+                    result.add_issue(
+                        code="STRUCT_002",
+                        message="Required field cannot be empty",
+                        severity=ValidationSeverity.ERROR,
+                        field_path=field_name,
+                    )
+
+        return result

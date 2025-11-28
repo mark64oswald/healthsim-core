@@ -1,11 +1,16 @@
 """Tests for healthsim.generation module."""
 
 import random
+from dataclasses import dataclass
 
 import pytest
 
 from healthsim.generation import (
+    AgeDistribution,
     BaseGenerator,
+    CohortConstraints,
+    CohortGenerator,
+    CohortProgress,
     NormalDistribution,
     PersonGenerator,
     SeedManager,
@@ -241,16 +246,14 @@ class TestBaseGenerator:
         assert gen.seed_manager.seed == 42
 
     def test_reproducibility(self) -> None:
-        """Test that same seed produces same results."""
+        """Test that same seed produces same random values."""
         gen1 = BaseGenerator(seed=42)
         gen2 = BaseGenerator(seed=42)
 
-        ids1 = [gen1.generate_id("TEST") for _ in range(5)]
-        gen1.reset()
-        ids2 = [gen1.generate_id("TEST") for _ in range(5)]
-
-        # After reset, should get same sequence
-        # Note: generate_id uses uuid which may not be seeded
+        # Random values should be the same with same seed
+        vals1 = [gen1.random_int(1, 100) for _ in range(5)]
+        vals2 = [gen2.random_int(1, 100) for _ in range(5)]
+        assert vals1 == vals2
 
     def test_generate_id(self) -> None:
         """Test ID generation."""
@@ -391,3 +394,265 @@ class TestPersonGenerator:
         assert person1.name.family_name == person2.name.family_name
         assert person1.gender == person2.gender
         assert person1.birth_date == person2.birth_date
+
+
+class TestAgeDistribution:
+    """Tests for AgeDistribution."""
+
+    def test_creation_default(self) -> None:
+        """Test creating with default bands."""
+        dist = AgeDistribution()
+        assert len(dist.bands) == 5
+
+    def test_creation_custom_bands(self) -> None:
+        """Test creating with custom bands."""
+        bands = [(18, 30, 0.5), (31, 50, 0.5)]
+        dist = AgeDistribution(bands=bands)
+        assert len(dist.bands) == 2
+
+    def test_sample(self) -> None:
+        """Test sampling an age."""
+        dist = AgeDistribution()
+        dist.seed(42)
+
+        age = dist.sample()
+        assert 18 <= age <= 90
+
+    def test_sample_many(self) -> None:
+        """Test sampling multiple ages."""
+        dist = AgeDistribution()
+        dist.seed(42)
+
+        ages = dist.sample_many(100)
+        assert len(ages) == 100
+        assert all(18 <= age <= 90 for age in ages)
+
+    def test_pediatric(self) -> None:
+        """Test pediatric age distribution."""
+        dist = AgeDistribution.pediatric()
+        dist.seed(42)
+
+        ages = dist.sample_many(100)
+        assert all(0 <= age <= 17 for age in ages)
+
+    def test_adult(self) -> None:
+        """Test adult age distribution."""
+        dist = AgeDistribution.adult()
+        dist.seed(42)
+
+        ages = dist.sample_many(100)
+        assert all(18 <= age <= 90 for age in ages)
+
+    def test_senior(self) -> None:
+        """Test senior age distribution."""
+        dist = AgeDistribution.senior()
+        dist.seed(42)
+
+        ages = dist.sample_many(100)
+        assert all(65 <= age <= 95 for age in ages)
+
+    def test_reproducibility(self) -> None:
+        """Test that same seed produces same ages."""
+        dist1 = AgeDistribution()
+        dist1.seed(42)
+
+        dist2 = AgeDistribution()
+        dist2.seed(42)
+
+        ages1 = dist1.sample_many(10)
+        ages2 = dist2.sample_many(10)
+
+        assert ages1 == ages2
+
+
+class TestCohortConstraints:
+    """Tests for CohortConstraints."""
+
+    def test_creation_defaults(self) -> None:
+        """Test creating with defaults."""
+        constraints = CohortConstraints()
+        assert constraints.count == 100
+        assert constraints.min_age is None
+        assert constraints.max_age is None
+
+    def test_creation_with_values(self) -> None:
+        """Test creating with specific values."""
+        constraints = CohortConstraints(
+            count=50,
+            min_age=18,
+            max_age=65,
+            gender_distribution={"M": 50.0, "F": 50.0},
+        )
+
+        assert constraints.count == 50
+        assert constraints.min_age == 18
+        assert constraints.max_age == 65
+        assert constraints.gender_distribution == {"M": 50.0, "F": 50.0}
+
+    def test_to_dict(self) -> None:
+        """Test converting to dictionary."""
+        constraints = CohortConstraints(
+            count=25,
+            min_age=30,
+            max_age=40,
+        )
+
+        d = constraints.to_dict()
+
+        assert d["count"] == 25
+        assert d["min_age"] == 30
+        assert d["max_age"] == 40
+
+    def test_custom_constraints(self) -> None:
+        """Test custom constraints field."""
+        constraints = CohortConstraints(
+            custom={"include_veterans": True, "region": "midwest"}
+        )
+
+        assert constraints.custom["include_veterans"] is True
+        assert constraints.custom["region"] == "midwest"
+
+
+class TestCohortProgress:
+    """Tests for CohortProgress."""
+
+    def test_creation(self) -> None:
+        """Test creating progress tracker."""
+        progress = CohortProgress(total=100)
+        assert progress.total == 100
+        assert progress.completed == 0
+        assert progress.failed == 0
+
+    def test_percent_complete(self) -> None:
+        """Test percentage calculation."""
+        progress = CohortProgress(total=100, completed=25)
+        assert progress.percent_complete == 25.0
+
+    def test_percent_complete_empty(self) -> None:
+        """Test percentage with zero total."""
+        progress = CohortProgress(total=0)
+        assert progress.percent_complete == 0.0
+
+    def test_is_complete(self) -> None:
+        """Test completion check."""
+        progress = CohortProgress(total=10)
+        assert progress.is_complete is False
+
+        progress.completed = 10
+        assert progress.is_complete is True
+
+    def test_is_complete_with_failures(self) -> None:
+        """Test completion check includes failures."""
+        progress = CohortProgress(total=10, completed=7, failed=3)
+        assert progress.is_complete is True
+
+
+class TestCohortGenerator:
+    """Tests for CohortGenerator."""
+
+    def test_creation(self) -> None:
+        """Test creating a generator."""
+        gen = CohortGenerator(seed=42)
+        assert gen.seed_manager.seed == 42
+
+    def test_generate_one_not_implemented(self) -> None:
+        """Test that base class raises NotImplementedError."""
+        gen = CohortGenerator()
+        constraints = CohortConstraints()
+
+        with pytest.raises(NotImplementedError):
+            gen.generate_one(0, constraints)
+
+    def test_progress_tracking(self) -> None:
+        """Test progress tracking during generation."""
+        # Create a simple concrete generator
+        @dataclass
+        class SimpleItem:
+            index: int
+
+        class SimpleCohortGenerator(CohortGenerator[SimpleItem]):
+            def generate_one(
+                self, index: int, constraints: CohortConstraints
+            ) -> SimpleItem:
+                return SimpleItem(index=index)
+
+        gen = SimpleCohortGenerator(seed=42)
+        constraints = CohortConstraints(count=5)
+
+        results = gen.generate(constraints)
+
+        assert len(results) == 5
+        assert gen.progress.completed == 5
+        assert gen.progress.is_complete is True
+
+    def test_generate_iter(self) -> None:
+        """Test iterator-based generation."""
+
+        @dataclass
+        class SimpleItem:
+            index: int
+
+        class SimpleCohortGenerator(CohortGenerator[SimpleItem]):
+            def generate_one(
+                self, index: int, constraints: CohortConstraints
+            ) -> SimpleItem:
+                return SimpleItem(index=index)
+
+        gen = SimpleCohortGenerator(seed=42)
+        constraints = CohortConstraints(count=3)
+
+        items = list(gen.generate_iter(constraints))
+
+        assert len(items) == 3
+        assert items[0].index == 0
+        assert items[1].index == 1
+        assert items[2].index == 2
+
+    def test_progress_callback(self) -> None:
+        """Test progress callback is called."""
+
+        @dataclass
+        class SimpleItem:
+            index: int
+
+        class SimpleCohortGenerator(CohortGenerator[SimpleItem]):
+            def generate_one(
+                self, index: int, constraints: CohortConstraints
+            ) -> SimpleItem:
+                return SimpleItem(index=index)
+
+        gen = SimpleCohortGenerator(seed=42)
+        constraints = CohortConstraints(count=3)
+
+        callbacks_received = []
+
+        def callback(progress: CohortProgress) -> None:
+            callbacks_received.append(progress.completed)
+
+        gen.generate(constraints, progress_callback=callback)
+
+        assert len(callbacks_received) == 3
+        assert callbacks_received == [1, 2, 3]
+
+    def test_reset(self) -> None:
+        """Test resetting the generator."""
+
+        @dataclass
+        class SimpleItem:
+            value: int
+
+        class SimpleCohortGenerator(CohortGenerator[SimpleItem]):
+            def generate_one(
+                self, index: int, constraints: CohortConstraints
+            ) -> SimpleItem:
+                return SimpleItem(value=self.seed_manager.get_random_int(1, 1000))
+
+        gen = SimpleCohortGenerator(seed=42)
+        constraints = CohortConstraints(count=3)
+
+        results1 = gen.generate(constraints)
+        gen.reset()
+        results2 = gen.generate(constraints)
+
+        # After reset, should get same values
+        assert [r.value for r in results1] == [r.value for r in results2]

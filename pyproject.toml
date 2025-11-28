@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "healthsim-core"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared foundation for HealthSim product family"
 readme = "README.md"
 license = {text = "MIT"}

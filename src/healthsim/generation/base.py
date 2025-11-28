@@ -7,8 +7,6 @@ reproducibility and common generation utilities.
 import uuid
 from datetime import date, datetime, timedelta
 
-from faker import Faker
-
 from healthsim.generation.distributions import WeightedChoice
 from healthsim.generation.reproducibility import SeedManager
 from healthsim.person.demographics import (

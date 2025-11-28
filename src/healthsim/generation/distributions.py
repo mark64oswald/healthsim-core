@@ -229,3 +229,73 @@ class UniformDistribution(Distribution, BaseModel):
         if rng is None:
             rng = random.Random()
         return rng.randint(int(self.min_val), int(self.max_val))
+
+
+class AgeDistribution:
+    """Age distribution for population generation.
+
+    Provides weighted random age selection based on
+    configurable age bands.
+    """
+
+    def __init__(self, bands: list[tuple[int, int, float]] | None = None):
+        """Initialize age distribution.
+
+        Args:
+            bands: List of (min_age, max_age, weight) tuples
+        """
+        if bands is None:
+            # Default adult distribution
+            self.bands = [
+                (18, 30, 0.20),
+                (31, 45, 0.25),
+                (46, 60, 0.25),
+                (61, 75, 0.20),
+                (76, 90, 0.10),
+            ]
+        else:
+            self.bands = bands
+        self._rng = random.Random()
+
+    def seed(self, seed: int) -> None:
+        """Set random seed for reproducibility."""
+        self._rng = random.Random(seed)
+
+    def sample(self) -> int:
+        """Sample an age from the distribution."""
+        # Weighted selection of band
+        weights = [band[2] for band in self.bands]
+        band = self._rng.choices(self.bands, weights=weights, k=1)[0]
+
+        # Random age within band
+        return self._rng.randint(band[0], band[1])
+
+    def sample_many(self, count: int) -> list[int]:
+        """Sample multiple ages."""
+        return [self.sample() for _ in range(count)]
+
+    @classmethod
+    def pediatric(cls) -> "AgeDistribution":
+        """Create pediatric age distribution (0-17)."""
+        return cls(bands=[
+            (0, 2, 0.15),
+            (3, 5, 0.15),
+            (6, 12, 0.35),
+            (13, 17, 0.35),
+        ])
+
+    @classmethod
+    def adult(cls) -> "AgeDistribution":
+        """Create adult age distribution (18-90)."""
+        return cls()  # Uses default
+
+    @classmethod
+    def senior(cls) -> "AgeDistribution":
+        """Create senior age distribution (65+)."""
+        return cls(bands=[
+            (65, 70, 0.30),
+            (71, 75, 0.25),
+            (76, 80, 0.20),
+            (81, 85, 0.15),
+            (86, 95, 0.10),
+        ])

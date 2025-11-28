@@ -1,15 +1,46 @@
 """Format export utilities.
 
-Provides JSON and CSV export functionality.
+Provides JSON and CSV export functionality and format helper functions.
 """
 
 import csv
 import json
+from datetime import date, datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
+
+
+def format_date(d: date | datetime | None, format_str: str = "%Y-%m-%d") -> str | None:
+    """Format a date to string."""
+    if d is None:
+        return None
+    return d.strftime(format_str)
+
+
+def format_datetime(
+    dt: datetime | None, format_str: str = "%Y-%m-%dT%H:%M:%S"
+) -> str | None:
+    """Format a datetime to ISO-like string."""
+    if dt is None:
+        return None
+    return dt.strftime(format_str)
+
+
+def safe_str(value: Any) -> str:
+    """Safely convert any value to string."""
+    if value is None:
+        return ""
+    return str(value)
+
+
+def truncate(text: str, max_length: int, suffix: str = "...") -> str:
+    """Truncate text to max length with suffix."""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix
 
 
 class JSONExporter:

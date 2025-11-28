@@ -1,14 +1,24 @@
 """Tests for healthsim.formats module."""
 
 import json
+from datetime import date, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
-import pytest
-
-from healthsim.formats import BaseTransformer, CSVExporter, JSONExporter
+from healthsim.formats import (
+    BaseTransformer,
+    CSVExporter,
+    CsvTransformer,
+    JSONExporter,
+    JsonTransformer,
+    Transformer,
+    format_date,
+    format_datetime,
+    safe_str,
+    truncate,
+)
 from healthsim.person import Gender, Person, PersonName
-from datetime import date
 
 
 class MockTransformer(BaseTransformer[dict, str]):
@@ -229,3 +239,239 @@ class TestCSVExporter:
         assert "a_c" in flat
         assert flat["a_b"] == 1
         assert flat["a_c"] == 2
+
+
+class TestFormatUtilities:
+    """Tests for format utility functions."""
+
+    def test_format_date(self) -> None:
+        """Test date formatting."""
+        d = date(2024, 1, 15)
+        result = format_date(d)
+        assert result == "2024-01-15"
+
+    def test_format_date_custom_format(self) -> None:
+        """Test date formatting with custom format."""
+        d = date(2024, 1, 15)
+        result = format_date(d, "%m/%d/%Y")
+        assert result == "01/15/2024"
+
+    def test_format_date_none(self) -> None:
+        """Test format_date with None."""
+        result = format_date(None)
+        assert result is None
+
+    def test_format_date_with_datetime(self) -> None:
+        """Test format_date with datetime input."""
+        dt = datetime(2024, 1, 15, 10, 30)
+        result = format_date(dt)
+        assert result == "2024-01-15"
+
+    def test_format_datetime(self) -> None:
+        """Test datetime formatting."""
+        dt = datetime(2024, 1, 15, 14, 30, 45)
+        result = format_datetime(dt)
+        assert result == "2024-01-15T14:30:45"
+
+    def test_format_datetime_custom_format(self) -> None:
+        """Test datetime formatting with custom format."""
+        dt = datetime(2024, 1, 15, 14, 30, 45)
+        result = format_datetime(dt, "%Y-%m-%d %H:%M")
+        assert result == "2024-01-15 14:30"
+
+    def test_format_datetime_none(self) -> None:
+        """Test format_datetime with None."""
+        result = format_datetime(None)
+        assert result is None
+
+    def test_safe_str(self) -> None:
+        """Test safe string conversion."""
+        assert safe_str("hello") == "hello"
+        assert safe_str(123) == "123"
+        assert safe_str(None) == ""
+        assert safe_str(3.14) == "3.14"
+
+    def test_safe_str_with_objects(self) -> None:
+        """Test safe_str with various objects."""
+
+        class CustomObj:
+            def __str__(self) -> str:
+                return "custom"
+
+        assert safe_str(CustomObj()) == "custom"
+        assert safe_str([1, 2, 3]) == "[1, 2, 3]"
+
+    def test_truncate(self) -> None:
+        """Test text truncation."""
+        text = "Hello, World!"
+        result = truncate(text, max_length=8)
+        assert result == "Hello..."
+        assert len(result) == 8
+
+    def test_truncate_no_truncation_needed(self) -> None:
+        """Test truncate with short text."""
+        text = "Hi"
+        result = truncate(text, max_length=10)
+        assert result == "Hi"
+
+    def test_truncate_custom_suffix(self) -> None:
+        """Test truncate with custom suffix."""
+        text = "Hello, World!"
+        result = truncate(text, max_length=10, suffix="~")
+        assert result == "Hello, Wo~"
+        assert len(result) == 10
+
+    def test_truncate_exact_length(self) -> None:
+        """Test truncate when text is exactly max_length."""
+        text = "Hello"
+        result = truncate(text, max_length=5)
+        assert result == "Hello"
+
+
+class TestTransformerBase:
+    """Tests for Transformer abstract base class."""
+
+    def test_transformer_is_abstract(self) -> None:
+        """Test that Transformer cannot be instantiated directly."""
+        # Transformer is abstract, so we test via concrete implementation
+        class ConcreteTransformer(Transformer[str, str]):
+            @property
+            def format_name(self) -> str:
+                return "test"
+
+            def transform(self, input_data: str) -> str:
+                return input_data.upper()
+
+        transformer = ConcreteTransformer()
+        assert transformer.format_name == "test"
+        assert transformer.format_version is None
+
+    def test_transform_many(self) -> None:
+        """Test transform_many method."""
+
+        class UpperTransformer(Transformer[str, str]):
+            @property
+            def format_name(self) -> str:
+                return "upper"
+
+            def transform(self, input_data: str) -> str:
+                return input_data.upper()
+
+        transformer = UpperTransformer()
+        results = transformer.transform_many(["hello", "world"])
+
+        assert results == ["HELLO", "WORLD"]
+
+    def test_transformer_callable(self) -> None:
+        """Test that transformer can be called directly."""
+
+        class DoubleTransformer(Transformer[int, int]):
+            @property
+            def format_name(self) -> str:
+                return "double"
+
+            def transform(self, input_data: int) -> int:
+                return input_data * 2
+
+        transformer = DoubleTransformer()
+        result = transformer(5)  # Call directly
+        assert result == 10
+
+
+class TestJsonTransformer:
+    """Tests for JsonTransformer."""
+
+    def test_format_name(self) -> None:
+        """Test format name is JSON."""
+
+        class SimpleJsonTransformer(JsonTransformer):
+            def transform(self, input_data: Any) -> dict[str, Any]:
+                return {"value": input_data}
+
+        transformer = SimpleJsonTransformer()
+        assert transformer.format_name == "JSON"
+
+    def test_to_json_string(self) -> None:
+        """Test to_json_string method."""
+
+        class DictTransformer(JsonTransformer):
+            def transform(self, input_data: Any) -> dict[str, Any]:
+                return {"data": input_data}
+
+        transformer = DictTransformer()
+        result = transformer.to_json_string("test")
+        parsed = json.loads(result)
+
+        assert parsed == {"data": "test"}
+
+    def test_to_json_string_indent(self) -> None:
+        """Test to_json_string with custom indent."""
+
+        class SimpleTransformer(JsonTransformer):
+            def transform(self, input_data: Any) -> dict[str, Any]:
+                return {"key": "value"}
+
+        transformer = SimpleTransformer()
+        result = transformer.to_json_string("ignored", indent=4)
+
+        assert "    " in result  # 4-space indent
+
+
+class TestCsvTransformer:
+    """Tests for CsvTransformer."""
+
+    def test_columns_property(self) -> None:
+        """Test columns property."""
+
+        class SimpleCsvTransformer(CsvTransformer):
+            @property
+            def columns(self) -> list[str]:
+                return ["name", "value"]
+
+            def transform(self, input_data: Any) -> list[dict[str, Any]]:
+                return [{"name": input_data, "value": 1}]
+
+        transformer = SimpleCsvTransformer()
+        assert transformer.columns == ["name", "value"]
+        assert transformer.format_name == "CSV"
+
+    def test_to_csv_string(self) -> None:
+        """Test to_csv_string method."""
+
+        class ItemTransformer(CsvTransformer):
+            @property
+            def columns(self) -> list[str]:
+                return ["id", "name"]
+
+            def transform(self, input_data: dict[str, Any]) -> list[dict[str, Any]]:
+                return [{"id": input_data["id"], "name": input_data["name"]}]
+
+        transformer = ItemTransformer()
+        items = [
+            {"id": 1, "name": "Item A"},
+            {"id": 2, "name": "Item B"},
+        ]
+
+        result = transformer.to_csv_string(items)
+
+        assert "id,name" in result
+        assert "1,Item A" in result
+        assert "2,Item B" in result
+
+    def test_to_csv_string_no_header(self) -> None:
+        """Test to_csv_string without header."""
+
+        class ItemTransformer(CsvTransformer):
+            @property
+            def columns(self) -> list[str]:
+                return ["value"]
+
+            def transform(self, input_data: int) -> list[dict[str, Any]]:
+                return [{"value": input_data}]
+
+        transformer = ItemTransformer()
+        result = transformer.to_csv_string([1, 2], include_header=False)
+
+        assert "value" not in result
+        assert "1" in result
+        assert "2" in result
